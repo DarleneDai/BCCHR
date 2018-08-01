@@ -1,0 +1,370 @@
+---
+title: "child_randomforest_Asthma5Y"
+author: "Hind"
+date: "July 16, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+#summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+#plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+---
+title: "CHILD cohort random forest analysis"
+output: html_notebook
+---
+This notebook analyzes the CHILD cohort using Random Forest classifiers for classifying asthmatic kids from healthy kids
+Asthma at 5 years : 
+A5Y_Bin is classified as asthmatic if diagosis is either possible or definite
+A5Y_Bin1 is classified as asthmatic if diagosis is  definite only; controls are possible and healthy cases
+
+```{r}
+library(randomForest)
+library(ROCR)
+
+child_data <- read.delim("Metadata_dateofcollection_25June2018.txt",sep = "\t")
+#head(child_data)
+```
+
+#Define the variables of interest that will be used for analysis. There are three categories of variables: 
+##1. Environmental (both Continuous and Categorica)
+##2. Familial 
+##3. Microbial 
+Extract all relevant variables for modeling
+```{r}
+child_data.columns = colnames(child_data)
+                 
+child_data.environCont = c("walk_score","avgndvi250m" ,"no2_tm1","no2_preg_imp","popdens250m","popdens2500m", "pm25", "o3", 
+                           "socialsupport","lesshs","near_water", "near_park")
+child_data.environCat = c( "BinaryPark", "BinaryWater",
+                          "Green250Q","TRAP_preg",
+                          "TertilesSocSupport", "TertilesNO2", "TertilesWalkScore", "TertilesPopDens2500", "TertilesPM25" ,"TertilesO3")
+child_data.baby = c("Sex","AgeAtVisit","MOD","OlderSibling","matopy","fatopy", "masthma", "fasthma", "race_m", "race_d",
+                    "breastfeed_months","Prebirth_abs_yn", "Mother_abs_birth_yn", "Mom_3mo_abs_yn", "Mom_1Y_abs_yn",
+                    "Child_birth_abs_yn","Child_3mo_abs_yn", "Child_6m_abs_total_yn", "Child_1Y_abs_yn", "Child_abs_yn", "Mom_abs_yn",
+                    "cmvstatus")
+child_data.microbial = c("Observed","Chao1","Shannon","Simpson", "FaithPD", "SR")
+child_data.other = c("SeqCount", "batch")
+child_data.asthma5Y_v1 = c("A5YBin")
+child_data.asthma5Y_v2 = c( "A5YBin_1")
+
+child_data.atopy1 = c("atopy1y")
+child_data.atopy3 = c( "atopy3y")
+child_data.atopy5 = c( "atopy5y")
+
+```
+
+Convert categorical variables as factors
+Change levels of 'Atopic_status' and 'Asthma_status' variables so that they are ordered better in graphs
+```{r}
+child_data$A3YBin =  as.factor(child_data$A3YBin)
+child_data$A3YBin_1 =  as.factor(child_data$A3YBin_1)
+child_data$A5YBin =  as.factor(child_data$A5YBin)
+child_data$A5YBin_1 =  as.factor(child_data$A5YBin_1)
+child_data$atopicstatus = as.factor(child_data$atopicstatus)
+child_data$sensitized=as.factor(child_data$sensitized)
+
+child_data$age_bin=as.factor(child_data$age_bin)
+child_data$agecat_bin=as.factor(child_data$agecat_bin)
+
+child_data$cmvstatus=as.factor(child_data$cmvstatus)
+child_data$Green100Q = as.factor(child_data$Green100Q)
+child_data$Green250Q = as.factor(child_data$Green250Q)
+child_data$NDVIQ100 = as.factor(child_data$NDVIQ100)
+child_data$NDVIQ250= as.factor(child_data$NDVIQ250)
+child_data$TRAP_preg = as.factor(child_data$TRAP_preg)
+child_data$TRAP_tm1 = as.factor(child_data$TRAP_tm1)
+child_data$TRAP_tm2 = as.factor(child_data$TRAP_tm2)
+child_data$TRAP_tm3 = as.factor(child_data$TRAP_tm3)
+child_data$TertilesPM25 = as.factor(child_data$TertilesPM25)
+child_data$TertilesO3 = as.factor(child_data$TertilesO3)
+child_data$TertilesWalkScore = as.factor(child_data$TertilesWalkScore)
+child_data$TertilesPopDens2500 = as.factor(child_data$TertilesPopDens2500)
+child_data$TertilesSocSupport = as.factor(child_data$TertilesSocSupport)
+child_data$popdenstertiles= as.factor(child_data$popdenstertiles)
+
+child_data$MOD = as.factor(child_data$MOD)
+child_data$Visit = as.factor(child_data$Visit)
+child_data$City =  as.factor(child_data$City)
+child_data$ChildGender=as.factor(child_data$ChildGender)
+child_data$OlderSibling = as.factor(child_data$OlderSibling)
+child_data$masthma = as.factor(child_data$masthma)
+child_data$fasthma = as.factor(child_data$fasthma)
+child_data$matopy = as.factor(child_data$matopy)
+child_data$fatopy = as.factor(child_data$fatopy)
+child_data$race_m = as.factor(child_data$race_m)
+child_data$race_d = as.factor(child_data$race_d)
+child_data$CatPregBin = as.factor(child_data$CatPregBin)
+child_data$DogPregBin = as.factor(child_data$DogPregBin)
+child_data$CatY1Bin = as.factor(child_data$CatY1Bin)
+child_data$DogY1Bin = as.factor(child_data$DogY1Bin)
+child_data$pets_1y = as.factor(child_data$pets_1y)
+child_data$pets_preg = as.factor(child_data$pets_preg)
+child_data$Prebirth_abs_yn = as.factor(child_data$Prebirth_abs_yn)
+child_data$Mother_abs_birth_yn = as.factor(child_data$Mother_abs_birth_yn)
+child_data$Mom_3mo_abs_yn = as.factor(child_data$Mom_3mo_abs_yn)
+child_data$Mom_1Y_abs_yn = as.factor(child_data$Mom_1Y_abs_yn )
+child_data$Mom_abs_yn = as.factor(child_data$Mom_abs_yn)
+child_data$Child_birth_abs_yn = as.factor(child_data$Child_birth_abs_yn)
+child_data$Child_3mo_abs_yn = as.factor(child_data$Child_3mo_abs_yn)
+child_data$Child_6m_abs_total_yn = as.factor(child_data$Child_6m_abs_total_yn)
+child_data$Child_1Y_abs_yn = as.factor(child_data$Child_1Y_abs_yn)
+
+child_data$atopicstatus = factor(child_data$atopicstatus, levels = c("Control","Atopy only","Wheeze only","AW"))
+child_data$status3Y_Bin1 = factor(child_data$status3Y_Bin1, levels = c("Healthy","Asthmatic"))
+child_data$MOD = factor(child_data$MOD, levels = c("Vagil","CWL", "CWOL"))
+
+#summary(child_data)
+```
+Creating subsets of data for 3 months and 12 months 
+```{r}
+child_data_3month = child_data[child_data$Visit=="3 month",]
+child_data_12month = child_data[child_data$Visit=="1 year",]
+```
+
+Function for use later 
+```{r}
+train_rf <- function(x,classlabelcolumn,ntree = 500, sample_size = c(20,20), class_weight=c(1,1)) {
+  library(randomForest)
+  library(ROCR)
+  # Convert class label to factor
+  x = na.omit(x)
+  x[,classlabelcolumn] = as.factor(x[,classlabelcolumn])
+  
+  # Get the best value of mtry
+  train = x[,!(names(x) %in% classlabelcolumn)]
+  mtry <- tuneRF(train,x[,classlabelcolumn],ntreeTry = ntree, stepFactor = 1.5, improve = 0.01, 
+                 trace = TRUE, plot = TRUE)
+  best.m <- mtry[mtry[,2]==min(mtry[,2]),1]
+  
+  # Train the RF with the best value of mtry 
+  rf <- randomForest(as.formula(paste(classlabelcolumn,"~.")), data=x,
+                     mtry=best.m, importance = TRUE, ntree = ntree,
+                     sampsize = sample_size,
+                     classwt = class_weight)
+  print(rf)
+  importance(rf)
+  print(importance(rf))
+  varImpPlot(rf)
+  
+  # performing predcition and evaluation 
+  pred1 = predict(rf,type = "prob")
+  
+  perf = prediction(pred1[,2],x[,classlabelcolumn])
+  auc = performance(perf, "auc")
+  pred3 = performance(perf,"tpr","fpr")
+  plot(pred3,main="ROC Curve for Random Forest",col=2, lwd=2 )
+  abline(a=0,b=1,lwd=2,lty=2,col="gray")
+  print(auc)
+  print(perf)
+  print(pred3)
+  return(rf)
+}
+
+```
+
+Random forest based on microbial features only 
+```{r}
+microb_3mon_rf = train_rf(child_data_3month[,c(child_data.microbial,child_data.asthma5Y_v1)],child_data.asthma5Y_v1)
+microb_12mon_rf = train_rf(child_data_12month[,c(child_data.microbial,child_data.asthma5Y_v1)],child_data.asthma5Y_v1)
+```
+
+Random forest based on baby related features only
+```{r}
+baby_3mon_rf = train_rf(child_data_3month[,c(child_data.baby,child_data.asthma5Y_v1)],child_data.asthma5Y_v1,sample_size = c(60,30))
+baby_12mon_rf = train_rf(child_data_12month[,c(child_data.baby,child_data.asthma5Y_v1)],child_data.asthma5Y_v1)
+```
+
+Random Forest based on environmental features only 
+```{r}
+# Categorical variables
+environ_3mon_rfcat = train_rf(child_data_3month[, c(child_data.environCat,child_data.asthma5Y_v1)],child_data.asthma5Y_v1, sample_size = c(60,30))
+environ_12mon_rfcat = train_rf(child_data_12month[,c(child_data.environCat ,child_data.asthma5Y_v1)],child_data.asthma5Y_v1)
+# Continuous variables
+environ_3mon_rfcont = train_rf(child_data_3month[,c(child_data.environCont,child_data.asthma5Y_v1)],child_data.asthma5Y_v1)
+environ_12mon_rfcont = train_rf(child_data_12month[,c(child_data.environCont,child_data.asthma5Y_v1)],child_data.asthma5Y_v1)
+
+```
+
+Random Forest based on all the features @ 3 months 
+
+```{r}
+all_3mon_rf = train_rf(child_data_3month[,c(child_data.microbial,
+                                            child_data.environCat,
+                                            child_data.baby,
+                                            child_data.asthma5Y_v1)],
+                       child_data.asthma5Y_v1)
+```
+Random Forest based on all the features @ 12 months 
+```{r}
+all_12mon_rf = train_rf(child_data_12month[,c(child_data.microbial,
+                                            child_data.environCat,
+                                            child_data.baby,
+                                            child_data.asthma5Y_v1)],
+                       child_data.asthma5Y_v1)
+```
+
+# Specific features for RF modeling 
+Train a model with specific features 
+```{r}
+specific_feature_list = c("City",
+                          "MOD",
+                          "OlderSibling", "Sex", "breastfeed_months","Chao1",
+                          "matopy","fatopy", "masthma", "race_m",
+                          "Child_abs_yn",
+                          "Green250Q", "BinaryPark",
+                          "no2_tm1","no2_preg_imp",
+                          "TertilesPopDens2500",
+                          "cmvstatus")
+```
+
+Random Forest with Specific features at 3 months 
+```{r}
+specfeature_3mon_rf= train_rf(child_data_3month[,c(specific_feature_list,child_data.asthma5Y_v1)],child_data.asthma5Y_v1,sample_size = c(30,30),class_weight = c(1,10))
+all_3mon_rf = train_rf(child_data_3month[,c(child_data.microbial,
+                                            child_data.environCat,
+                                            child_data.baby,
+                                            child_data.asthma5Y_v1)],
+                       child_data.asthma5Y_v1)
+
+train_rf(child_data_3month[,c(specific_feature_list,child_data.asthma5Y_v1)],child_data.asthma5Y_v1,sample_size = c(30,30))
+```
+
+Specific feature list 2 
+```{r}
+specific_feature_list2 = c("City",
+                          "MOD",
+                          "OlderSibling",
+                          "matopy",
+                          "fatopy",
+                          "avgndvi250m",
+                          "no2_preg_imp",
+                          "popdens250m",
+                          "Observed",
+                          "Shannon",
+                          "Simpson",
+                          "Chao1"
+                          )
+train_rf(child_data_3month[,c(specific_feature_list2,child_data.asthma)],
+         child_data.asthma,sample_size = c(35,35),
+         class_weight = c(1,10))
+
+train_rf(child_data_3month[,c(specific_feature_list2,child_data.asthma)],
+         child_data.asthma,
+         sample_size = c(30,30))
+```
+
+# Remove collinear features 
+
+```{r}
+library(corrplot)
+cor_microbial = cor(na.omit(child_data[,child_data.microbial]))
+corrplot(cor_microbial)
+child_data.environCont
+
+cor_environmental = cor(na.omit(child_data[,child_data.environmental]))
+cor_environmental
+corrplot(cor_environmental)
+```
+
+Reduced features 
+```{r}
+reduced_features = specific_feature_list2 = c("City",
+                                              "MOD",
+                                              "OlderSibling",
+                                              "matopy",
+                                              "fatopy",
+                                              "avgndvi250m",
+                                              "no2_preg_imp",
+                                              #"popdens250m",
+                                              "Observed",
+                                              #"Shannon",
+                                              "Simpson"
+                                              #"Chao1"
+)
+```
+
+RFs with reduced features 
+
+```{r}
+train_rf(child_data_3month[,c(reduced_features,child_data.asthma)],
+         child_data.asthma,sample_size = c(35,35),
+         class_weight = c(1,10))
+
+train_rf(child_data_3month[,c(reduced_features,child_data.asthma)],
+         child_data.asthma,
+         sample_size = c(30,30))
+```
+# Next step add genus agglomeration 
+
+```{r}
+hind_genus_aggregates = read.csv('/Users/raunaq/Box/Commense/Hind/HindJun14/GenusAggregates.csv',header = TRUE, row.names = 1)
+
+genus_names = colnames(hind_genus_aggregates)
+```
+
+# Merge the genus data to metadata value
+```{r}
+child_genus_merged = merge(child_data,hind_genus_aggregates,by=0)
+rownames(child_genus_merged) = child_genus_merged$Row.names
+child_genus_merged = child_genus_merged[,-which(names(child_genus_merged) %in% c("Row.names"))]
+write.csv(child_genus_merged,'/Users/raunaq/Box/Commense/Hind/HindJun14/maphs_genus.csv')
+dim(child_genus_merged)
+
+```
+
+```{r}
+# Find correlations of all the Genus names 
+genus_correlations = cor(child_genus_merged[,genus_names], method="spearman")
+corrplot(genus_correlations, method = "color",tl.cex = 0.5, order = "hclust")
+
+```
+
+
+```{r}
+# Find correlations by Asthma and Healthy sub-groups at 3 months 
+genus_3mon_asthma = cor(child_genus_merged_3mon[child_genus_merged_3mon$A3YBin == 1,genus_names],method="spearman")
+
+corrplot(genus_3mon_asthma,method="color",tl.cex = 0.5,na.label = '.')
+
+genus_3mon_healthy = cor(child_genus_merged_3mon[child_genus_merged_3mon$A3YBin == 0,genus_names],method="spearman")
+
+corrplot(genus_3mon_healthy,method="color",tl.cex = 0.5,na.label = '.')
+```
+
+
+```{r}
+child_genus_merged_3mon = child_genus_merged[child_genus_merged$Visit=="3 month",]
+dim(child_genus_merged_3mon)
+child_genus_merged_12mon = child_data[child_data$Visit=="1 year",]
+dim(child_genus_merged_12mon)
+
+# Random forest classifiations using just the genus data without class weights 
+genus_3mon_rf = train_rf(child_genus_merged_3mon[,c(genus_names,child_data.asthma)],child_data.asthma,sample_size = c(30,30))
+
+# Random forest classifiations using just the genus data without class weights and reduced_features from above
+genus_reduced_3mon_rf = train_rf(child_genus_merged_3mon[,c(genus_names,reduced_features,child_data.asthma)],child_data.asthma,sample_size = c(30,30))
+
+
+```
+
+
