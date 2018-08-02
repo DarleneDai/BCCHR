@@ -23,34 +23,39 @@ data.input <- na.omit(data.deal)
 dim(data.input)
 
 #Fit the model
-x_train <- model.matrix( ~ .-1, data.input[,c(child_data.environCont, child_data.baby, child_data.microbial)])
-model <- glmnet(x=x_train, y=data.input$A3YBin_1, family="binomial", alpha=0.5) #Hind, here the alpha can be changed to any number between 0 to 1
+x_train <- model.matrix( ~ .-1, data.input[,c(child_data.environCont, child_data.baby, child_data.microbial)]) # remove intercept to create matrix where cat.var become binary 
+for(alpha.use in c(0.3,0.5,0.7)){
+  model1 <- glmnet(x=x_train, y=data.input$A3YBin_1, family="binomial", alpha=alpha.use) #Hind, here the alpha can be changed to any number between 0 to 1
+  #Estimate the best lambda using cv.glmnet
+  
+  lm = cv.glmnet(x=x_train,y = as.factor(data.input$A3YBin_1), intercept=FALSE ,family =   "binomial", alpha=alpha.use, nfolds=10)
+  best_lambda <- lm$lambda.min 
+  
+}
 
-#Estimate the best lambda using cv.glmnet
-lm = cv.glmnet(x=x_train,y = as.factor(data.input$A3YBin_1), intercept=FALSE ,family =   "binomial", alpha=0.5, nfolds=10)
-best_lambda <- lm$lambda.min 
 
 #Get the selected features from the model
 res <- predict(model, s=best_lambda, type = "coefficients")
 select.features <- rownames(res)[res[,1]!=0][-1]
 
-##Re-fit the model by only using the selected variables---------------
+##Re-fit the model by only using the selected variables - Amazing!!! Darlene allows the use of more samples this way!---------------
 data.deal <- child_data[,c(resp.var,select.features)]
 data.input <- na.omit(data.deal)
 dim(data.input)
 
 #Fit the model
 x_train <- model.matrix( ~ .-1, data.input[,c(select.features)])
-model <- glmnet(x=x_train, y=data.input$A3YBin_1, family="binomial", alpha=0.5)
-
+for(alpha.use in c(0.3,0.5,0.7)){
+model <- glmnet(x=x_train, y=data.input$A3YBin_1, family="binomial", alpha=alpha.use)
 #Estimate the best lambda
-lm = cv.glmnet(x=x_train,y = as.factor(data.input$A3YBin_1), intercept=FALSE ,family =   "binomial", alpha=0.5, nfolds=10)
+lm = cv.glmnet(x=x_train,y = as.factor(data.input$A3YBin_1), intercept=FALSE ,family =   "binomial", alpha=alpha.use, nfolds=10)
 best_lambda <- lm$lambda.min
+}
 
 #Get the coefficients of these features
 res <- predict(model, s=best_lambda, type = "coefficients")
 
-#Get the In-train AUC (Hind, I think for your script, you must have the Leave-one-out CV AUC)
+#Get the In-train AUC 
 probs <- predict(model, newx=x_train[,select.features], type="response",  s=best_lambda)
 intrain.prob <- data.frame(SampleID=rownames(data.input),
                            Group=data.input$A3YBin_1,
@@ -58,3 +63,7 @@ intrain.prob <- data.frame(SampleID=rownames(data.input),
 with(intrain.prob, auc(y=Group,prob=Prob))
 #[1] 0.7899393
 
+# coefficients for each variable is given by res
+# to compare the importance of each feature, 
+# either compute a standardize 
+# Or have a graph
