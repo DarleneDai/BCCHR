@@ -21,10 +21,8 @@ residhx$DOB_m <- as.numeric(strsplit2(residhx$ChildActualDOB,"/")[,1])
 residhx$DOB_y <- as.numeric(strsplit2(residhx$ChildActualDOB,"/")[,3])
 
 # use mutate to compute trimester averages
-# the denominator needs to be the total number of 
-exp.trim<- mutate(data.exp.preg, no2_tm1= sum(C1:C90, na.rm=T)/90, 
-                                  no2_tm2=sum(C91:c180, na.rm=T)/90), 
-                                no2_tm3=sum(c181:C292, na.rm=T)/90)
+# Shoud I use rowsums instead of sum...to try 
+exp.trim<- mutate(data.exp.preg, no2_tm1= sum(C1:C91, na.rm=T)/91, no2_tm2= sum(C92:C183, na.rm=T)/91,  no2_tm3=sum(c181:C292, na.rm=T)/90)
 
 
 
